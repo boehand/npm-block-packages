@@ -391,13 +391,17 @@ install.
 #### \`blacklist-url\`
 
 * Default:
-  "https://raw.githubusercontent.com/npm/blocked-packages/main/blocked.json"
+  "https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json"
 * Type: String
 
 URL of the JSON document listing packages and versions that \`npm install\`
 must refuse to install. The document is fetched on each install and cached
 for \`blacklist-ttl\` milliseconds. Falls back to the last cached copy (or a
 bundled default) when the URL is unreachable.
+
+The default points at a daily-refreshed mirror of the OpenSSF
+\`malicious-packages\` advisory database (npm ecosystem only), compacted to a
+single JSON document.
 
 
 
@@ -2722,7 +2726,7 @@ Object {
   "before": null,
   "binLinks": true,
   "blacklistTtl": 21600000,
-  "blacklistUrl": "https://raw.githubusercontent.com/npm/blocked-packages/main/blocked.json",
+  "blacklistUrl": "https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json",
   "browser": null,
   "bypass-2fa": false,
   "ca": null,

@@ -199,13 +199,17 @@ const definitions = {
     flatten,
   }),
   'blacklist-url': new Definition('blacklist-url', {
-    default: 'https://raw.githubusercontent.com/npm/blocked-packages/main/blocked.json',
+    default: 'https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json',
     type: String,
     description: `
       URL of the JSON document listing packages and versions that \`npm install\`
       must refuse to install. The document is fetched on each install and
       cached for \`blacklist-ttl\` milliseconds. Falls back to the last cached
       copy (or a bundled default) when the URL is unreachable.
+
+      The default points at a daily-refreshed mirror of the OpenSSF
+      \`malicious-packages\` advisory database (npm ecosystem only), compacted
+      to a single JSON document.
     `,
     flatten,
   }),

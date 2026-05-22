@@ -155,6 +155,36 @@ t.test('checkTree walks an ideal tree inventory', async t => {
   t.equal(hits[0].version, '1.0.0')
 })
 
+t.test('accepts compact entries (versions value stored directly)', async t => {
+  // Remote OSSF lists drop the wrapper object to keep payloads small;
+  // values are the version list (array | "*" | semver-range) directly.
+  const cache = t.testdir()
+  const cachePath = join(cache, 'blacklist', 'blocked-packages.json')
+  await mkdir(join(cache, 'blacklist'), { recursive: true })
+  await writeFile(cachePath, JSON.stringify({
+    fetchedAt: Date.now(),
+    source: 'compact-test',
+    packages: {
+      'wild-pkg': '*',
+      'list-pkg': ['1.0.0', '2.0.0'],
+      'range-pkg': '>=1.0.0 <2.0.0',
+    },
+  }))
+
+  const bl = new Blacklist(makeNpm(cache))
+  await bl.load()
+
+  t.ok(bl.matchVersion('wild-pkg', '9.9.9'), 'compact wildcard matches')
+  t.ok(bl.matchVersion('list-pkg', '1.0.0'), 'compact array matches listed version')
+  t.notOk(bl.matchVersion('list-pkg', '9.9.9'), 'compact array skips unlisted version')
+  t.ok(bl.matchVersion('range-pkg', '1.5.0'), 'compact range matches')
+  t.notOk(bl.matchVersion('range-pkg', '2.0.0'), 'compact range excludes upper bound')
+
+  t.ok(bl.checkArg('wild-pkg'), 'checkArg flags compact wildcard by name alone')
+  t.ok(bl.checkArg('list-pkg@1.0.0'), 'checkArg flags exact match in compact array')
+  t.notOk(bl.checkArg('list-pkg'), 'checkArg defers tag-spec on partial compact list')
+})
+
 t.test('buildBlockedError attaches code and structured data', async t => {
   const hits = [{
     name: 'evil',

@@ -1,0 +1,64 @@
+name: Update blacklist
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily at 03:17 UTC. Offset to avoid the top-of-the-hour cron stampede.
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Aggregate OSSF malicious-packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: cli
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Shallow clone OSSF malicious-packages
+        run: |
+          git clone --depth 1 --filter=blob:none \
+            https://github.com/ossf/malicious-packages ossf
+
+      - name: Build blocked.json
+        run: |
+          mkdir -p out
+          node cli/scripts/build-blacklist.js ossf out/blocked.json
+          # Show what we produced so failures are easy to triage from logs.
+          ls -lh out/
+          node -e "
+            const j = require('./out/blocked.json');
+            console.log('entries:', j.entries);
+            console.log('source:', j.source);
+            console.log('generated:', j.generatedAt);
+          "
+
+      - name: Publish to blocked-list branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Recreate the branch from scratch each run so we never accumulate
+          # history we don't need. The branch only ever contains the JSON.
+          cd out
+          git init -q
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git checkout -q -b blocked-list
+          git add blocked.json blocked-verbose.json
+          git commit -q -m "chore: refresh blocked.json from OSSF ($(date -u +%FT%TZ))"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git push -q --force origin blocked-list
