@@ -160,6 +160,11 @@ const setupMockNpm = async (t, {
       env: {
         NODE_ENV: process.env.NODE_ENV,
         COLOR: process.env.COLOR,
+        // The compromised-packages blacklist would otherwise issue a real
+        // HTTP request from every test that exec's an install. Disable it
+        // by default so the gate uses an empty in-memory list. Tests that
+        // exercise blacklist behavior unset this themselves.
+        NPM_BLACKLIST_DISABLED: '1',
         // further, these are npm controlled envs that we need to zero out before
         // before the test. setting them to undefined ensures they are not set and
         // also returned to their original value after the test

@@ -4,6 +4,10 @@ const { mkdir, writeFile } = require('node:fs/promises')
 
 const Blacklist = require('../../../lib/utils/blacklist.js')
 
+// These tests drive the module directly and must not pick up the
+// `NPM_BLACKLIST_DISABLED` flag set by the mock-npm fixture in sibling tests.
+t.beforeEach(() => { delete process.env.NPM_BLACKLIST_DISABLED })
+
 const fakeRemote = (response, { fail = false } = {}) => async () => {
   if (fail) {
     throw new Error('network down')

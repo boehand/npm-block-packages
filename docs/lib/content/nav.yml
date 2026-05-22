@@ -15,6 +15,9 @@
   - title: npm audit
     url: /commands/npm-audit
     description: Run a security audit
+  - title: npm blacklist
+    url: /commands/npm-blacklist
+    description: Inspect and refresh the compromised-packages blacklist consulted by `npm install`
   - title: npm bugs
     url: /commands/npm-bugs
     description: Report bugs for a package in a web browser
