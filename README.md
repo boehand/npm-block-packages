@@ -1,53 +1,66 @@
-# npm - a JavaScript package manager
+# npm-block-packages
 
-### Requirements
+> ⚠️ **This is NOT the official npm CLI.**
+> This is a community fork of [`npm/cli`](https://github.com/npm/cli) with **one specific addition**: every `npm install` consults an auto-updated blacklist of known-compromised packages and refuses to install matches. For the official, upstream npm CLI go to **https://github.com/npm/cli**.
 
-You should be running a currently supported version of [Node.js](https://nodejs.org/en/download/) to run **`npm`**.  For a list of which versions of Node.js are currently supported, please see the [Node.js releases](https://nodejs.org/en/about/previous-releases) page.
+All standard npm behavior is inherited unchanged from upstream. This document only describes what this fork adds. For everything else — `npm install` semantics, lockfiles, workspaces, scripts, configuration, etc. — refer to the [official npm documentation](https://docs.npmjs.com/).
 
-### Installation
+## What this fork does
 
-**`npm`** comes bundled with [**`node`**](https://nodejs.org/), & most third-party distributions, by default. Officially supported downloads/distributions can be found at: [nodejs.org/en/download](https://nodejs.org/en/download)
+Before resolving the dependency tree, `npm install` (and `npm ci`, `npm install-test`, `npm install-ci-test`) consults a list of npm packages that are publicly known to be malicious or compromised. If any of the requested packages — or any of their transitive dependencies — appears on the list, the install is aborted with an `EBLOCKED` error **before any files are written** to `node_modules`.
 
-#### Direct Download
+The list is fetched on demand from a configurable URL, cached locally, and refreshed periodically. The default source aggregates the [OpenSSF `malicious-packages`](https://github.com/ossf/malicious-packages) advisory database for the npm ecosystem (~210k entries, refreshed daily).
 
-You can download & install **`npm`** directly from [**npmjs**.com](https://npmjs.com/) using our custom `install.sh` script:
-
-```bash
-curl -qL https://www.npmjs.com/install.sh | sh
-```
-
-#### Node Version Managers
-
-If you're looking to manage multiple versions of **`Node.js`** &/or **`npm`**, consider using a [node version manager](https://github.com/search?q=node+version+manager+archived%3Afalse&type=repositories&ref=advsearch)
-
-### Usage
+## Installation
 
 ```bash
-npm <command>
+npm i -g github:boehand/npm-block-packages
 ```
 
-### Links & Resources
+This replaces your current `npm` with this fork (same as the upstream `npm i -g npm@latest`). To revert at any time, run `npm i -g npm`.
 
-* [**Documentation**](https://docs.npmjs.com/) - Official docs & how-tos for all things **npm**
-    * Note: you can also search docs locally with `npm help-search <query>`
-* [**Bug Tracker**](https://github.com/npm/cli/issues) - Search or submit bugs against the CLI
-* [**Community Feedback and Discussions**](https://github.com/orgs/community/discussions/categories/npm) - Contribute ideas & discussion around the npm registry, website & CLI
-* [**RFCs**](https://github.com/npm/rfcs) - Contribute ideas & specifications for the API/design of the npm CLI
-* [**Service Status**](https://status.npmjs.org/) - Monitor the current status & see incident reports for the website & registry
-* [**Project Status**](https://npm.github.io/statusboard/) - See the health of all our maintained OSS projects in one view
-* [**Support**](https://www.npmjs.com/support) - Experiencing problems with the **npm** [website](https://npmjs.com) or [registry](https://registry.npmjs.org)? [File a ticket](https://www.npmjs.com/support)
+You need an existing Node.js / npm to run the line above — the fork only changes the `npm` binary, not Node itself.
 
-### Acknowledgments
+## New command: `npm blacklist`
 
-* `npm` is configured to use the **npm Public Registry** at [https://registry.npmjs.org](https://registry.npmjs.org) by default; Usage of this registry is subject to **Terms of Use** available at [https://npmjs.com/policies/terms](https://npmjs.com/policies/terms)
-* You can configure `npm` to use any other compatible registry you prefer. You can read more about [configuring third-party registries](https://docs.npmjs.com/cli/v7/using-npm/registry)
+```text
+npm blacklist list                                       # show the cached list
+npm blacklist update                                     # force a refresh
+npm blacklist check <pkg>[@<version>] [<pkg>[@<ver>] …]  # check specs without installing
+```
 
-### FAQ on Branding
+`check` exits with status `1` if any of the supplied specs are on the list, which makes it useful as a CI pre-step.
 
-#### Is it "npm" or "NPM" or "Npm"?
+## New configuration keys
 
-**`npm`** should never be capitalized unless it is being displayed in a location that is customarily all-capitals (ex. titles on `man` pages).
+| Key | Default | Effect |
+|---|---|---|
+| `--blacklist-url` | OSSF aggregated mirror | URL the list is fetched from on install. |
+| `--blacklist-ttl` | `21600000` (6 h) | How long the cached list is trusted before refetching. Set to `0` to refresh on every install. |
+| `--allow-blocked` | `false` | Bypass the blacklist for a single install. Equivalent to `--force` for the gate only. |
 
-#### Is "npm" an acronym for "Node Package Manager"?
+The same keys work as environment variables: `NPM_BLACKLIST_URL`, `NPM_BLACKLIST_TTL`, and `NPM_BLACKLIST_DISABLED=1` (the last fully disables the gate, intended for air-gapped CI).
 
-Contrary to popular belief, **`npm`** **is not** an acronym for "Node Package Manager." It is a recursive backronymic abbreviation for **"npm is not an acronym"** (if the project were named "ninaa," then it would be an acronym). The precursor to **`npm`** was actually a bash utility named **"pm"**, which was the shortform name of **"pkgmakeinst"** - a bash function that installed various things on various platforms. If **`npm`** were ever considered an acronym, it would be as "node pm" or, potentially, "new pm".
+## What a block looks like
+
+```text
+npm error code EBLOCKED
+npm error blacklist npm blocked the install because 1 package is on the compromised-packages blacklist:
+npm error blacklist
+npm error blacklist   - flatmap-stream: Malicious package used to compromise event-stream. (https://github.com/advisories/GHSA-mh6f-8j2x-4483)
+npm error blacklist
+npm error blacklist Blacklist source: https://github.com/ossf/malicious-packages
+npm error blacklist Override at your own risk with --allow-blocked.
+```
+
+## How the list stays current
+
+A scheduled GitHub Action in this repo (`.github/workflows/update-blacklist.yml`) shallow-clones [`ossf/malicious-packages`](https://github.com/ossf/malicious-packages) once a day, runs `scripts/build-blacklist.js` to flatten every npm-ecosystem OSV advisory into a single compact JSON document, and force-pushes the result to a dedicated `blocked-list` branch. Clients fetch that branch via `raw.githubusercontent.com`, which serves it gzipped (~1.4 MB on the wire).
+
+If you want to use a different source — your own internal list, a different aggregator, etc. — point `--blacklist-url` at it. The expected format is documented in [`lib/utils/blacklist-default.json`](lib/utils/blacklist-default.json).
+
+## Disclaimer
+
+This fork is provided as-is. It is **not affiliated with npm, Inc., GitHub, or the OpenJS Foundation**. The blacklist itself is best-effort: it depends entirely on the upstream OSSF data and can lag behind newly disclosed compromises. **It is not a replacement for `npm audit`, lockfile review, dependency pinning, or any other security practice.** Always treat installs from any source — including this one — as code you are running.
+
+For the official, supported npm CLI, see **https://github.com/npm/cli**.
