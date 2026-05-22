@@ -45,10 +45,14 @@ t.test('list shows entries from cache', async t => {
   await npm.exec('blacklist', ['list'])
   const out = joinedOutput()
   t.match(out, /Source: test-source/)
-  t.match(out, /Entries: 2/)
+  // Total entry count is "test entries + bundled defaults" because the
+  // module always overlays the curated bundled list onto whatever is loaded.
+  t.match(out, /Entries: \d+/)
   t.match(out, /evil-pkg/)
   t.match(out, /pinned-pkg/)
   t.match(out, /9\.9\.9/)
+  // A representative bundled entry must also appear.
+  t.match(out, /event-stream/)
 })
 
 t.test('list defaults when no subcommand given', async t => {
@@ -172,5 +176,121 @@ t.test('update falls back to existing cache when the fetch fails', async t => {
   }, 'previous-source')
 
   await npm.exec('blacklist', ['update'])
-  t.match(joinedOutput(), /Blacklist updated: 1 entries from previous-source/)
+  t.match(joinedOutput(), /Blacklist updated: \d+ entries from previous-source/)
+})
+
+t.test('scan reports blacklisted installs found on disk', async t => {
+  const { npm, joinedOutput } = await loadMockNpm(t, {
+    config: { ...OFFLINE_CONFIG },
+    globals: ENABLE_BLACKLIST,
+    otherDirs: {
+      projects: {
+        a: {
+          'package-lock.json': JSON.stringify({
+            lockfileVersion: 3,
+            packages: {
+              '': { name: 'a' },
+              'node_modules/safe': { version: '1.0.0' },
+              'node_modules/evil': { version: '3.3.6' },
+            },
+          }),
+        },
+        b: {
+          node_modules: {
+            'rogue': { 'package.json': JSON.stringify({ name: 'rogue', version: '1.0.0' }) },
+          },
+        },
+      },
+    },
+  })
+  stubBlacklist(npm.cache, {
+    evil: { versions: ['3.3.6'], reason: 'compromised event-stream era' },
+    rogue: { versions: '*', reason: 'typosquat malware', advisory: 'https://ex/r' },
+  })
+  const scanDir = join(npm.cache, '..', 'other', 'projects')
+
+  const originalExit = process.exitCode
+  t.teardown(() => { process.exitCode = originalExit })
+
+  await npm.exec('blacklist', ['scan', scanDir])
+  const out = joinedOutput()
+  t.match(out, /Found 2 blacklisted package installs/)
+  t.match(out, /evil@3\.3\.6/)
+  t.match(out, /rogue@1\.0\.0/)
+  t.match(out, /compromised event-stream era/)
+  t.match(out, /typosquat malware/)
+  t.match(out, /https:\/\/ex\/r/)
+  t.equal(process.exitCode, 1, 'exit code signals hits were found')
+})
+
+t.test('scan reports clean tree without setting exit code', async t => {
+  const { npm, joinedOutput } = await loadMockNpm(t, {
+    config: { ...OFFLINE_CONFIG },
+    globals: ENABLE_BLACKLIST,
+    otherDirs: {
+      projects: {
+        clean: {
+          'package-lock.json': JSON.stringify({
+            lockfileVersion: 3,
+            packages: {
+              '': { name: 'clean' },
+              'node_modules/lodash': { version: '4.17.21' },
+            },
+          }),
+          node_modules: {
+            'lodash': { 'package.json': JSON.stringify({ name: 'lodash', version: '4.17.21' }) },
+          },
+        },
+      },
+    },
+  })
+  stubBlacklist(npm.cache, { evil: { versions: '*' } })
+  const scanDir = join(npm.cache, '..', 'other', 'projects')
+
+  const originalExit = process.exitCode
+  t.teardown(() => { process.exitCode = originalExit })
+
+  await npm.exec('blacklist', ['scan', scanDir])
+  t.match(joinedOutput(), /No blacklisted packages found/)
+  t.notOk(process.exitCode, 'clean scan leaves exit code untouched')
+})
+
+t.test('scan --json emits structured findings', async t => {
+  const { npm, joinedOutput } = await loadMockNpm(t, {
+    config: { ...OFFLINE_CONFIG, json: true },
+    globals: ENABLE_BLACKLIST,
+    otherDirs: {
+      proj: {
+        node_modules: {
+          'evil': { 'package.json': JSON.stringify({ name: 'evil', version: '1.0.0' }) },
+        },
+      },
+    },
+  })
+  stubBlacklist(npm.cache, { evil: { versions: '*', reason: 'rce', advisory: 'https://ex/a' } })
+  const scanDir = join(npm.cache, '..', 'other', 'proj')
+
+  const originalExit = process.exitCode
+  t.teardown(() => { process.exitCode = originalExit })
+
+  await npm.exec('blacklist', ['scan', scanDir])
+  const parsed = JSON.parse(joinedOutput())
+  t.equal(parsed.hits.length, 1)
+  t.equal(parsed.hits[0].name, 'evil')
+  t.equal(parsed.hits[0].version, '1.0.0')
+  t.equal(parsed.hits[0].reason, 'rce')
+  t.equal(parsed.hits[0].advisory, 'https://ex/a')
+})
+
+t.test('scan defaults to cwd when no dir is given', async t => {
+  // We don't easily control cwd inside the mock fixture chdir, so this
+  // just confirms the command runs without throwing when no dir arg is
+  // supplied (the actual cwd is empty / clean in the test sandbox).
+  const { npm } = await loadMockNpm(t, {
+    config: { ...OFFLINE_CONFIG },
+    globals: ENABLE_BLACKLIST,
+  })
+  stubBlacklist(npm.cache, {})
+  await npm.exec('blacklist', ['scan'])
+  t.pass('scan tolerated missing dir arg')
 })

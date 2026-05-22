@@ -3034,6 +3034,7 @@ Usage:
 npm blacklist list
 npm blacklist update
 npm blacklist check <pkg>[@<version>] [<pkg>[@<version>] ...]
+npm blacklist scan [<dir>]
 
 Options:
 [--json]
@@ -3048,6 +3049,7 @@ Run "npm help blacklist" for more info
 npm blacklist list
 npm blacklist update
 npm blacklist check <pkg>[@<version>] [<pkg>[@<version>] ...]
+npm blacklist scan [<dir>]
 \`\`\`
 
 Note: This command is unaware of workspaces.

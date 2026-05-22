@@ -27,9 +27,12 @@ You need an existing Node.js / npm to run the line above — the fork only chang
 npm blacklist list                                       # show the cached list
 npm blacklist update                                     # force a refresh
 npm blacklist check <pkg>[@<version>] [<pkg>[@<ver>] …]  # check specs without installing
+npm blacklist scan [<dir>]                               # scan an existing tree on disk
 ```
 
 `check` exits with status `1` if any of the supplied specs are on the list, which makes it useful as a CI pre-step.
+
+`scan` recursively walks `<dir>` (defaults to the current directory), reads every `package-lock.json` and the top level of every `node_modules/` directory it finds, and reports any installed package or locked version that appears on the blacklist. This is the retroactive complement to the install gate — the gate stops *future* installs, `scan` surfaces *past* installs that pre-date the gate. Exits with status `1` when any hit is found, both for plain-text and `--json` output.
 
 ## New configuration keys
 
