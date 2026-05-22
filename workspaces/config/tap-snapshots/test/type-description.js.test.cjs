@@ -19,6 +19,9 @@ Object {
   "all": Array [
     "boolean value (true or false)",
   ],
+  "allow-blocked": Array [
+    "boolean value (true or false)",
+  ],
   "allow-directory": Array [
     "all",
     "none",
@@ -69,6 +72,12 @@ Object {
   ],
   "bin-links": Array [
     "boolean value (true or false)",
+  ],
+  "blacklist-ttl": Array [
+    "numeric value",
+  ],
+  "blacklist-url": Array [
+    Function String(),
   ],
   "browser": Array [
     null,

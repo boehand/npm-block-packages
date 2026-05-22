@@ -16,6 +16,9 @@ exports[`test/lib/commands/config.js TAP config list --json > output matches sna
   "access": null,
   "all": false,
   "allow-same-version": false,
+  "allow-blocked": false,
+  "blacklist-url": "https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json",
+  "blacklist-ttl": 21600000,
   "allow-directory": "all",
   "allow-file": "all",
   "allow-git": "all",
@@ -191,6 +194,7 @@ exports[`test/lib/commands/config.js TAP config list --long > output matches sna
 _auth = (protected)
 access = null
 all = false
+allow-blocked = false
 allow-directory = "all"
 allow-file = "all"
 allow-git = "all"
@@ -202,6 +206,8 @@ audit-level = null
 auth-type = "web"
 before = null
 bin-links = true
+blacklist-ttl = 21600000
+blacklist-url = "https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json"
 browser = null
 bypass-2fa = false
 ca = null

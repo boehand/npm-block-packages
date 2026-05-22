@@ -246,6 +246,7 @@ t.test('exec commands', async t => {
         '{LIB}/utils/reify-finish.js': async () => {},
         '@npmcli/run-script': () => {},
         '@npmcli/arborist': function () {
+          this.buildIdealTree = async () => { this.idealTree = { inventory: new Map() } }
           this.reify = (opts) => {
             REIFY_CALLED_WITH = opts
           }
@@ -506,6 +507,179 @@ t.test('exec commands', async t => {
       { code: 'EALLOWREMOTE' },
       'user-supplied remote URL is still blocked'
     )
+  })
+
+  // Helper: write a stub blacklist into npm's cache directory so the gate
+  // resolves without going to the network. The stub is marked fresh so the
+  // TTL check passes and no fetch is attempted.
+  const stubBlacklist = (cacheDir, packages, source = 'test-source') => {
+    const dir = path.join(cacheDir, 'blacklist')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'blocked-packages.json'), JSON.stringify({
+      fetchedAt: Date.now(),
+      source,
+      packages,
+    }))
+  }
+
+  // mock-npm disables the blacklist for every test by default via an env var.
+  // Pass this as `globals` to re-enable it for the gate scenarios below.
+  const ENABLE_BLACKLIST = {
+    'process.env.NPM_BLACKLIST_DISABLED': undefined,
+  }
+
+  await t.test('install blocks a compromised direct arg before reify runs', async t => {
+    let reifyCalled = false
+    const { npm } = await loadMockNpm(t, {
+      config: {
+        audit: false,
+        'blacklist-url': 'http://127.0.0.1:1/none.json',
+      },
+      globals: ENABLE_BLACKLIST,
+      mocks: {
+        '{LIB}/utils/reify-finish.js': async () => { reifyCalled = true },
+        '@npmcli/run-script': () => {},
+        '@npmcli/arborist': function () {
+          this.buildIdealTree = async () => { this.idealTree = { inventory: new Map() } }
+          this.reify = async () => { reifyCalled = true }
+        },
+      },
+    })
+    stubBlacklist(npm.cache, {
+      'evil-pkg': { versions: '*', reason: 'malicious', advisory: 'https://ex/1' },
+    })
+
+    await t.rejects(
+      npm.exec('install', ['evil-pkg@1.0.0']),
+      { code: 'EBLOCKED', message: /evil-pkg/ },
+      'install rejects with EBLOCKED'
+    )
+    t.notOk(reifyCalled, 'reify never ran')
+  })
+
+  await t.test('install blocks a transitive compromised dep via ideal tree walk', async t => {
+    let reifyCalled = false
+    const { npm } = await loadMockNpm(t, {
+      config: {
+        audit: false,
+        'blacklist-url': 'http://127.0.0.1:1/none.json',
+      },
+      globals: ENABLE_BLACKLIST,
+      mocks: {
+        '{LIB}/utils/reify-finish.js': async () => { reifyCalled = true },
+        '@npmcli/run-script': () => {},
+        '@npmcli/arborist': function () {
+          this.buildIdealTree = async () => {
+            this.idealTree = {
+              inventory: new Map([
+                ['/', { isProjectRoot: true, package: { name: 'root', version: '1.0.0' }, location: '' }],
+                ['/a', { package: { name: 'safe', version: '1.0.0' }, location: 'node_modules/safe' }],
+                ['/b', { package: { name: 'sneaky', version: '1.0.0' }, location: 'node_modules/x/node_modules/sneaky' }],
+              ]),
+            }
+          }
+          this.reify = async () => { reifyCalled = true }
+        },
+      },
+    })
+    stubBlacklist(npm.cache, {
+      sneaky: { versions: ['1.0.0'], reason: 'transitive malware' },
+    })
+
+    await t.rejects(
+      npm.exec('install', []),
+      { code: 'EBLOCKED', message: /sneaky/ },
+      'transitive dep is flagged'
+    )
+    t.notOk(reifyCalled, 'reify never ran')
+  })
+
+  await t.test('--allow-blocked bypasses the blacklist gate', async t => {
+    let reifyCalled = false
+    const { npm } = await loadMockNpm(t, {
+      config: {
+        audit: false,
+        'allow-blocked': true,
+        'blacklist-url': 'http://127.0.0.1:1/none.json',
+      },
+      globals: ENABLE_BLACKLIST,
+      mocks: {
+        '{LIB}/utils/reify-finish.js': async () => {},
+        '@npmcli/run-script': () => {},
+        '@npmcli/arborist': function () {
+          this.buildIdealTree = async () => {
+            t.fail('buildIdealTree should not be called from the gate when bypassed')
+          }
+          this.reify = async () => { reifyCalled = true }
+        },
+      },
+    })
+    stubBlacklist(npm.cache, {
+      'evil-pkg': { versions: '*' },
+    })
+
+    await npm.exec('install', ['evil-pkg@1.0.0'])
+    t.ok(reifyCalled, 'reify ran because the gate was bypassed')
+  })
+
+  await t.test('--force bypasses the blacklist gate', async t => {
+    let reifyCalled = false
+    const { npm } = await loadMockNpm(t, {
+      config: {
+        audit: false,
+        force: true,
+        'blacklist-url': 'http://127.0.0.1:1/none.json',
+      },
+      globals: ENABLE_BLACKLIST,
+      mocks: {
+        '{LIB}/utils/reify-finish.js': async () => {},
+        '@npmcli/run-script': () => {},
+        '@npmcli/arborist': function () {
+          this.buildIdealTree = async () => {
+            t.fail('buildIdealTree should not be called from the gate when bypassed')
+          }
+          this.reify = async () => { reifyCalled = true }
+        },
+      },
+    })
+    stubBlacklist(npm.cache, {
+      'evil-pkg': { versions: '*' },
+    })
+
+    await npm.exec('install', ['evil-pkg@1.0.0'])
+    t.ok(reifyCalled, 'reify ran because --force was set')
+  })
+
+  await t.test('install of a safe package passes the gate normally', async t => {
+    let reifyCalled = false
+    const { npm } = await loadMockNpm(t, {
+      config: {
+        audit: false,
+        'blacklist-url': 'http://127.0.0.1:1/none.json',
+      },
+      globals: ENABLE_BLACKLIST,
+      mocks: {
+        '{LIB}/utils/reify-finish.js': async () => {},
+        '@npmcli/run-script': () => {},
+        '@npmcli/arborist': function () {
+          this.buildIdealTree = async () => {
+            this.idealTree = {
+              inventory: new Map([
+                ['/', { isProjectRoot: true, package: { name: 'root', version: '1.0.0' }, location: '' }],
+                ['/a', { package: { name: 'safe-pkg', version: '1.0.0' }, location: 'node_modules/safe-pkg' }],
+              ]),
+            }
+          }
+          this.reify = async () => { reifyCalled = true }
+        },
+      },
+    })
+    stubBlacklist(npm.cache, {
+      'evil-pkg': { versions: '*' },
+    })
+
+    await npm.exec('install', ['safe-pkg@1.0.0'])
+    t.ok(reifyCalled, 'reify ran for a safe install')
   })
 })
 

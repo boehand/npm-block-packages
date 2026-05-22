@@ -98,6 +98,7 @@ exports[`test/lib/docs.js TAP command list > commands 1`] = `
 Array [
   "access",
   "audit",
+  "blacklist",
   "bugs",
   "cache",
   "ci",
@@ -209,6 +210,18 @@ status\` would.
 When running \`npm outdated\` and \`npm ls\`, setting \`--all\` will show all
 outdated or installed packages, rather than only those directly depended
 upon by the current project.
+
+
+
+#### \`allow-blocked\`
+
+* Default: false
+* Type: Boolean
+
+Bypasses the compromised-packages blacklist that \`npm install\` consults
+before resolving the dependency tree. When \`true\`, packages listed by the
+configured blacklist (see \`blacklist-url\`) are installed anyway. Equivalent
+to \`--force\` for the blacklist gate only. Use with caution.
 
 
 
@@ -361,6 +374,34 @@ executables.
 Set to false to have it not do this. This can be used to work around the
 fact that some file systems don't support symlinks, even on ostensibly Unix
 systems.
+
+
+
+#### \`blacklist-ttl\`
+
+* Default: 21600000
+* Type: Number
+
+How long (in milliseconds) to trust the cached compromised-packages list
+before refetching from \`blacklist-url\`. Set to \`0\` to refresh on every
+install.
+
+
+
+#### \`blacklist-url\`
+
+* Default:
+  "https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json"
+* Type: String
+
+URL of the JSON document listing packages and versions that \`npm install\`
+must refuse to install. The document is fetched on each install and cached
+for \`blacklist-ttl\` milliseconds. Falls back to the last cached copy (or a
+bundled default) when the URL is unreachable.
+
+The default points at a daily-refreshed mirror of the OpenSSF
+\`malicious-packages\` advisory database (npm ecosystem only), compacted to a
+single JSON document.
 
 
 
@@ -2305,6 +2346,9 @@ Array [
   "access",
   "all",
   "allow-same-version",
+  "allow-blocked",
+  "blacklist-url",
+  "blacklist-ttl",
   "allow-directory",
   "allow-file",
   "allow-git",
@@ -2484,6 +2528,9 @@ Array [
   "access",
   "all",
   "allow-same-version",
+  "allow-blocked",
+  "blacklist-url",
+  "blacklist-ttl",
   "allow-directory",
   "allow-file",
   "allow-git",
@@ -2667,6 +2714,7 @@ Object {
   "_auth": null,
   "access": null,
   "all": false,
+  "allowBlocked": false,
   "allowDirectory": "all",
   "allowFile": "all",
   "allowGit": "all",
@@ -2677,6 +2725,8 @@ Object {
   "authType": "web",
   "before": null,
   "binLinks": true,
+  "blacklistTtl": 21600000,
+  "blacklistUrl": "https://raw.githubusercontent.com/boehand/npm-block-packages/blocked-list/blocked.json",
   "browser": null,
   "bypass-2fa": false,
   "ca": null,
@@ -2975,6 +3025,34 @@ npm audit [fix|signatures]
 #### \`workspaces\`
 #### \`include-workspace-root\`
 #### \`install-links\`
+`
+
+exports[`test/lib/docs.js TAP usage blacklist > must match snapshot 1`] = `
+Inspect and refresh the compromised-packages blacklist consulted by \`npm install\`
+
+Usage:
+npm blacklist list
+npm blacklist update
+npm blacklist check <pkg>[@<version>] [<pkg>[@<version>] ...]
+
+Options:
+[--json]
+
+  --json
+    Whether or not to output JSON data, rather than the normal output.
+
+
+Run "npm help blacklist" for more info
+
+\`\`\`bash
+npm blacklist list
+npm blacklist update
+npm blacklist check <pkg>[@<version>] [<pkg>[@<version>] ...]
+\`\`\`
+
+Note: This command is unaware of workspaces.
+
+#### \`json\`
 `
 
 exports[`test/lib/docs.js TAP usage bugs > must match snapshot 1`] = `
@@ -3996,7 +4074,7 @@ Options:
 [--allow-file <all|none|root>] [--allow-git <all|none|root>]
 [--allow-remote <all|none|root>] [--no-audit] [--before <date>]
 [--min-release-age <days>] [--no-bin-links] [--no-fund] [--dry-run] [--cpu <cpu>]
-[--os <os>] [--libc <libc>]
+[--os <os>] [--libc <libc>] [--allow-blocked]
 [-w|--workspace <workspace-name> [-w|--workspace <workspace-name> ...]]
 [--workspaces] [--include-workspace-root] [--install-links]
 
@@ -4081,6 +4159,9 @@ Options:
   --libc
     Override libc of native modules to install.
 
+  --allow-blocked
+    Bypasses the compromised-packages blacklist that \`npm install\` consults
+
   -w|--workspace
     Enable running a command in the context of the configured workspaces of the
 
@@ -4131,6 +4212,7 @@ aliases: add, i, in, ins, inst, insta, instal, isnt, isnta, isntal, isntall
 #### \`cpu\`
 #### \`os\`
 #### \`libc\`
+#### \`allow-blocked\`
 #### \`workspace\`
 #### \`workspaces\`
 #### \`include-workspace-root\`
@@ -4264,7 +4346,7 @@ Options:
 [--allow-file <all|none|root>] [--allow-git <all|none|root>]
 [--allow-remote <all|none|root>] [--no-audit] [--before <date>]
 [--min-release-age <days>] [--no-bin-links] [--no-fund] [--dry-run] [--cpu <cpu>]
-[--os <os>] [--libc <libc>]
+[--os <os>] [--libc <libc>] [--allow-blocked]
 [-w|--workspace <workspace-name> [-w|--workspace <workspace-name> ...]]
 [--workspaces] [--include-workspace-root] [--install-links]
 
@@ -4349,6 +4431,9 @@ Options:
   --libc
     Override libc of native modules to install.
 
+  --allow-blocked
+    Bypasses the compromised-packages blacklist that \`npm install\` consults
+
   -w|--workspace
     Enable running a command in the context of the configured workspaces of the
 
@@ -4399,6 +4484,7 @@ alias: it
 #### \`cpu\`
 #### \`os\`
 #### \`libc\`
+#### \`allow-blocked\`
 #### \`workspace\`
 #### \`workspaces\`
 #### \`include-workspace-root\`
