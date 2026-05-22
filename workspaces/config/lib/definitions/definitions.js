@@ -187,6 +187,38 @@ const definitions = {
   `,
     flatten,
   }),
+  'allow-blocked': new Definition('allow-blocked', {
+    default: false,
+    type: Boolean,
+    description: `
+      Bypasses the compromised-packages blacklist that \`npm install\` consults
+      before resolving the dependency tree. When \`true\`, packages listed by
+      the configured blacklist (see \`blacklist-url\`) are installed anyway.
+      Equivalent to \`--force\` for the blacklist gate only. Use with caution.
+    `,
+    flatten,
+  }),
+  'blacklist-url': new Definition('blacklist-url', {
+    default: 'https://raw.githubusercontent.com/npm/blocked-packages/main/blocked.json',
+    type: String,
+    description: `
+      URL of the JSON document listing packages and versions that \`npm install\`
+      must refuse to install. The document is fetched on each install and
+      cached for \`blacklist-ttl\` milliseconds. Falls back to the last cached
+      copy (or a bundled default) when the URL is unreachable.
+    `,
+    flatten,
+  }),
+  'blacklist-ttl': new Definition('blacklist-ttl', {
+    default: 6 * 60 * 60 * 1000,
+    type: Number,
+    description: `
+      How long (in milliseconds) to trust the cached compromised-packages
+      list before refetching from \`blacklist-url\`. Set to \`0\` to refresh
+      on every install.
+    `,
+    flatten,
+  }),
   'allow-directory': new Definition('allow-directory', {
     default: 'all',
     type: ['all', 'none', 'root'],
